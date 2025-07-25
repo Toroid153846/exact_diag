@@ -189,15 +189,16 @@ end
 \end{jllisting}
 演算子同士の引き算は通常の数との積を用いて帰納的に定義されている。
 \begin{jllisting}
-function sum(mats::Op...)
-  ans = mats[1]
-  for mat in mats[2:end]
-    ans += mat
-  end
-  ans
+function sum(mat::Op)
+  return mat
+end
+function sum(op1::Op, op2::Op...)
+  op3 = sum(op2...)
+  ans = op1 + op3
+  return ans
 end
 function sum(f::Function, k::Int=0)
-  sum(Tuple(f(i) for i in 1:(_site[]-k))...)
+  sum(Tuple(f(i) for i in k:(_site[]-1))...)
 end
 \end{jllisting}
 演算子の和を計算する関数であり、引数の演算子の総和を求められる。\\
@@ -209,7 +210,7 @@ sum(i->f(i))
 \begin{jllisting}
 sum(i->f(i), k)
 \end{jllisting}
-上のように表記することで、サイト数からkを引いた値までの総和を求めることもできる。(開放端条件などのために用いられる)\\
+上のように表記することで、kから最後までの総和を求めることもできる。(開放端条件などのために用いられる)\\
 \subsection*{具体的な演算子の定義}
 作用させた後に単一のFock状態に戻る演算子のみを定義する。\\
 \begin{jllisting}
@@ -257,7 +258,7 @@ spin_flip() = Op(spin_flip)
 \begin{jllisting}
 function spin(kind::Char, site::Int)
   site_number = _site[]
-  idx = (site - 1) % site_number + 1
+  idx = mod(site-1,site_number)+1
   if kind == '+'
     plus = function (t::Int)
       n = Nary_trans(t)
@@ -681,9 +682,9 @@ end
 \end{jllisting}
 エネルギーは大体実数であるため、複素数の虚部がほとんどない場合に実数に変換する関数である。虚部がある場合にはエラーが出る。可換でない演算子の固有状態を用いてブロック対角化したとき等にエラーが出る。\\
 \begin{jllisting}
-function block_diag1(ham::Op, op1::Op)
+function block_diag1(ham::Op, op1::Op, b::Bool=false)
   dim_tot = _dim[]^_site[]
-  mat1=ExactDiag.matrix(ham)
+  mat1=matrix(ham)
   dict1, maximum = eigens_dict(op1)
   sorted_keys = sort(collect(keys(dict1)), by=real)
   eigenenergys1 = Vector{Vector{Float64}}(undef, length(sorted_keys))
@@ -697,10 +698,13 @@ function block_diag1(ham::Op, op1::Op)
     eigenenergys1[i]= complex_float(eigenvalues1)
     eigenstates1[i]=reverse_eigenstates(eigenvectors1, vec1, maximum, eigenvalue1, number)
   end
+  if b
+    return (sorted_keys, eigenenergys1, eigenstates1)
+  end
   return (vcat(eigenenergys1...), hcat(eigenstates1...))
 end
 \end{jllisting}
-この関数は、ハミルトニアンと演算子の固有状態を用いて一回ブロック対角化されたハミルトニアンの固有値と固有状態を求める。ほぼ、今までの関数を用いただけなので、説明は省略する。\\
+この関数は、ハミルトニアンと演算子の固有状態を用いて一回ブロック対角化されたハミルトニアンの固有値と固有状態を求める。最後にtrueを入れると、セクターごとに出てくる。(エンタングルメントエントロピーの計算のため)ほぼ、今までの関数を用いただけなので、説明は省略する。\\
 エネルギー準位はどのようにブロック対角化に依存しないため、エネルギー準位が同じであるか判定する関数を定義する。
 \begin{jllisting}
 function energy_same_check(energy1::Vector{Float64}, energy2::Vector{Float64})
@@ -718,6 +722,21 @@ function energy_same_check(energy1::Vector{Float64}, energy2::Vector{Float64})
 end
 \end{jllisting}
 エネルギー固有値をこれに入れればエネルギー準位が正しいかどうか判定できる。\\
+\begin{jllisting}
+function energy_degeneracy_check(energies::Vector{Float64})
+  if length(energies) < 2
+    return false
+  end
+  energies_sorted = sort(energies)
+  for i in 1:length(energies_sorted)-1
+    if abs(energies_sorted[i] - energies_sorted[i+1]) < 1e-10
+      return true
+    end
+  end
+  return false
+end
+\end{jllisting}
+エネルギー準位の縮退があるかどうかを判定する関数である。縮退がある場合にはtrueを返す。\\
 \subsection{複数の対称性を用いてブロック対角化する}
 後でやる。可積分系で既約分解するためには必要となってくる。
 \section{rvalueやエンタングルメントエントロピーの計算}
@@ -819,8 +838,7 @@ end
 \subsection*{縦磁場横磁場イジングモデル(開放端)—-空間反転のみ}
 \begin{gather}
   \hat{H}=J\sum_{i=1}^{N-1} \hat{S}_i^z\hat{S}_{i+1}^z - \frac{h}{2}\sum_{i=1}^{N} \left( \hat{S}_i^+ + \hat{S}_i^- \right) - v\sum_{i=1}^{N} \hat{S}_i^z\\
-  \frac{h}{J}=\sqrt{1.5}\\
-  \frac{v}{J}=\sqrt{2.0}
+  \frac{h}{J}=\sqrt{1.5},\frac{v}{J}=\sqrt{2.0}
 \end{gather}
 \begin{figure}[H]
   \centering
@@ -831,9 +849,7 @@ end
 \subsection*{横磁場と縦磁場を加えたXXZモデル(開放端)--空間反転のみ}
 \begin{gather}
   \hat{H}=J\sum_{i=1}^{N-1} \left(\frac{1}{2}(\hat{S}_i^+\hat{S}_{i+1}^- + \hat{S}_i^-\hat{S}_{i+1}^+) + \Delta\hat{S}_i^z\hat{S}_{i+1}^z\right)  - \frac{h}{2}\sum_{i=1}^{N} \left( \hat{S}_i^+ + \hat{S}_i^- \right) - v\sum_{i=1}^{N} \hat{S}_i^z\\
-  \Delta=\sqrt{1.3}\\
-  \frac{h}{J}=\sqrt{1.5}
-  \frac{v}{J}=\sqrt{2}
+  \Delta=\sqrt{1.3},\frac{h}{J}=\sqrt{1.5},\frac{v}{J}=\sqrt{2}
 \end{gather}
 \begin{figure}[H]
   \centering
@@ -841,14 +857,55 @@ end
   \caption{横磁場と縦磁場を加えたXXZモデル}
   \label{fig:rvalue_xxz}
 \end{figure}
-どちらもあまり収束しておらず微妙な結果となっている。\\
+どちらもあまり収束しておらず微妙な結果となっている。縮退しているかどうかの判定はfalseであり既約分解はできており、普通に対角化した場合と比べてもエネルギー固有値は等しいのでブロック対角化にも問題がないと思われる。\\
+コードは以下のように書いた。
+\begin{jllisting}
+using .ExactDiag
+using Plots
+default(dpi=600)
+x=Vector{Float64}()
+y11=Vector{Float64}()
+y12=Vector{Float64}()
+y21=Vector{Float64}()
+y22=Vector{Float64}()
+for L in 5:12
+  push!(x, L)
+  init(2,L)
+  hj = sqrt(1.5)
+  vj = sqrt(2.0)
+  Δ = sqrt(1.3)
+  H1 = sum(j -> spin('z', j) * spin('z', j + 1), 1) - sum(j -> hj * spin('x', j)) - sum(j -> vj * spin('z', j))
+  H2 = sum(j -> spin('x', j) * spin('x', j + 1) + spin('y', j) * spin('y', j + 1) + Δ * spin('z', j) * spin('z', j + 1),1) - sum(j -> hj * spin('x', j)) - sum(j -> vj * spin('z', j))
+  dict1= block_diag1_rvalue(H1, site_flip(), true)
+  push!(y11, dict1[-1.0 + 0.0im])
+  push!(y12, dict1[1.0 + 0.0im])
+  dict2= block_diag1_rvalue(H2, site_flip(), true)
+  push!(y21, dict2[-1.0 + 0.0im])
+  push!(y22, dict2[1.0 + 0.0im])
+end
+plot(x, y11, label="eigenvalue=-1.0", xlabel="site number", ylabel="rvalue", title="Transverse magnetic field Ising model with longitudinal magnetic field", legend=:topright, marker=:circle, markersize=5, linewidth=2, color=:blue)
+plot!(x, y12, label="eigenvalue=1.0",marker=:diamond, markersize=5, linewidth=2, color=:green)
+threshold = 4.0-2.0*sqrt(3.0)
+hline!([threshold];
+  label="GOE",
+  linestyle=:dash, linewidth=2, color=:red)
+cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
+savefig("rvalue_transverse1.png")
+plot(x, y21, label="eigenvalue=-1.0", xlabel="site number", ylabel="rvalue", title="XXZ model with transverse and longitudinal magnetic field", legend=:topright, marker=:circle, markersize=5, linewidth=2, color=:blue)
+plot!(x, y22, label="eigenvalue=1.0",marker=:diamond, markersize=5, linewidth=2, color=:green)
+threshold = 4.0-2.0*sqrt(3.0)
+hline!([threshold];
+  label="GOE",
+  linestyle=:dash, linewidth=2, color=:red)
+cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
+savefig("rvalue_xxz1.png")
+\end{jllisting}
 \section{エンタングルメントエントロピーの計算}
 \section{エンタングルメントエントロピーの計算結果}
 \subsection*{縦磁場横磁場イジングモデル(開放端)—空間反転のみ}
 \begin{gather}
   \hat{H}=J\sum_{i=1}^{N-1} \hat{S}_i^z\hat{S}_{i+1}^z - \frac{h}{2}\sum_{i=1}^{N} \left( \hat{S}_i^+ + \hat{S}_i^- \right) - v\sum_{i=1}^{N} \hat{S}_i^z\\
-  \frac{h}{J}=\sqrt{1.5}\\
-  \frac{v}{J}=\sqrt{2.0}
+  \frac{h}{J}=\sqrt{1.5},\frac{v}{J}=\sqrt{2.0}
 \end{gather}
 \begin{figure}[H]
   \centering
@@ -867,8 +924,7 @@ end
 \subsection*{横磁場イジングモデル(開放端)—空間反転のみ}
 \begin{gather}
   \hat{H}=J\sum_{i=1}^{N-2} \hat{S}_i^z\hat{S}_{i+1}^z + k\hat{S}_{N-1}^z\hat{S}_{N}^z - \frac{h}{2}\sum_{i=1}^{N} \left( \hat{S}_i^+ + \hat{S}_i^- \right)\\
-  \frac{h}{J}=\sqrt{1.5}\\
-  \frac{k}{J}=\sqrt{2.5}
+  \frac{h}{J}=\sqrt{1.5},\frac{k}{J}=\sqrt{2.5}
 \end{gather}
 \begin{figure}[H]
   \centering
@@ -880,8 +936,7 @@ end
 \subsection*{サイン関数による縦磁場勾配を加えたXXZ模型(開放端)—U(1)対称性のみ}
 \begin{gather}
   \hat{H}=J\sum_{i=1}^{N-1} \left(\frac{1}{2}(\hat{S}_i^+\hat{S}_{i+1}^- + \hat{S}_i^-\hat{S}_{i+1}^+) + \Delta\hat{S}_i^z\hat{S}_{i+1}^z\right) + v\sum_{i=1}^{N} \sin(i)\hat{S}_i^z\\
-  \Delta=\sqrt{1.3}\\
-  \frac{v}{J}=\sqrt{2}
+  \Delta=\sqrt{1.3},\frac{v}{J}=\sqrt{2}
 \end{gather}
 \begin{figure}[H]
   \centering
@@ -889,6 +944,66 @@ end
   \caption{縦磁場を入れたXXZ模型}
   \label{fig:entropy_xxz}
 \end{figure}
+\begin{jllisting}
+using .ExactDiag
+using Plots
+default(dpi=600)
+x1=Vector{Float64}()
+x2=Vector{Float64}()
+x3=Vector{Float64}()
+x4=Vector{Float64}()
+y1=Vector{Float64}()
+y2=Vector{Float64}()
+y3=Vector{Float64}()
+y4=Vector{Float64}()
+L = 12
+init(2,L)
+hj = sqrt(1.5)
+vj = sqrt(2.0)
+Δ = sqrt(1.3)
+kj = sqrt(2.5)
+H1 = sum(j -> spin('z', j) * spin('z', j + 1), 1) - sum(j -> hj * spin('x', j)) - sum(j -> vj * spin('z', j))
+H2 = sum(j -> spin('z', j) * spin('z', j + 1), 2) + kj * spin('z', 1) * spin('z', 2) - sum(j -> hj * spin('x', j))
+H3 = sum(j -> spin('x', j) * spin('x', j + 1) + spin('y', j) * spin('y', j + 1) + Δ * spin('z', j) * spin('z', j + 1),1) - sum(j -> vj * sin(j) * spin('z', j))
+H4 = sum(j -> spin('z', j) * spin('z', j + 1), 1) - sum(j -> 10000.0 * spin('x', j)) - sum(j -> vj * spin('z', j))
+x1, y1 = block_diag1_entanglement_entropy(H1, site_flip(), 1.0 + 0.0im)
+x2, y2 = block_diag1_entanglement_entropy(H2, spin_flip(), 1.0 + 0.0im)
+x3,y3 = block_diag1_entanglement_entropy(H3, S_z(), 0.0 + 0.0im)
+x4,y4 = block_diag1_entanglement_entropy(H4, site_flip(), 1.0 + 0.0im)
+scatter(x1, y1;
+  label="eigenvalue=1",
+  xlabel="energy",
+  ylabel="entanglement entropy",
+  title="transverse field Ising model with longitudinal field",
+  markersize=1.5, markerstrokewidth=0.5)
+cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
+savefig("entropy_siteflip1.png")
+scatter(x2, y2;
+  label="eigenvalue=1",
+  xlabel="energy",
+  ylabel="entanglement entropy",
+  title="transverse field Ising model",
+  markersize=1.5, markerstrokewidth=0.5)
+cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
+savefig("entropy_spinflip.png")
+scatter(x3, y3;
+  label="eigenvalue=0",
+  xlabel="energy",
+  ylabel="entanglement entropy",
+  title="transverse field XXZ model",
+  markersize=1.5, markerstrokewidth=0.5)
+cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
+savefig("entropy_xxz.png")
+scatter(x4, y4;
+  label="eigenvalue=1",
+  xlabel="energy",
+  ylabel="entanglement entropy",
+  title="transverse field Ising model with longitudinal field",
+  markersize=1.5, markerstrokewidth=0.5)
+cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
+savefig("entropy_hjmax.png")
+\end{jllisting}
+このようなコードを用いて計算した。\\
 
 
 \end{document}

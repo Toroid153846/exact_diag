@@ -968,7 +968,7 @@ function block_diag_entropy_z2(H::Union{Op,Matrix{ComplexF64}}, indices::Vector{
             else
               coeff1 = 1.0 / sqrt(length(ntheigens_dict[ntheigen1][k])) + 0.0im
             end
-            mat1[ntheigens_dict[ntheigen1][k][l], j] += eigenvectors1[k, j] * nthroot1[(i*(l-1)+ma-1)%ma+1] * coeff1
+            mat1[ntheigens_dict[ntheigen1][k][l], j] += eigenvectors1[k, j] * nthroot1[mod((-i * (l - 1) + ma - 1), ma)+1] * coeff1
           end
         end
       end
@@ -1120,10 +1120,10 @@ using UnionFind
 using LinearAlgebra
 using Plots
 default(dpi=600)
-L = 12
-hj = sqrt(1.5)
+L = 2
+hj = 1.0
 # hj=sqrt(10000.0)
-vj = sqrt(2.0)
+vj = 1.0
 kj = sqrt(2.5)
 nn = sqrt(0.8)
 Δ = sqrt(1.3)
@@ -1131,23 +1131,24 @@ init(2, L)
 # 横磁場縦磁場イジングモデル(開放端条件)--サイト反転対称性のみ
 H1 = sum_j_fixed(j -> spin_op('z', j) * spin_op('z', j + 1)) - sum_j(j -> 0.5 * hj * (spin_op('+', j) + spin_op('-', j))) - vj * sum_j(j -> spin_op('z', j))
 # 横磁場イジングモデル(開放端条件と端の改変)--スピン反転対称性のみ
-H2 = sum_j_fixed(j -> spin_op('z', j) * spin_op('z', j + 1), 2) + kj * spin_op('z', L - 1) * spin_op('z', L) - sum_j(j -> hj * (spin_op('+', j) + spin_op('-', j))) - vj * sum_j(j -> spin_op('z', j))
+#H2 = sum_j_fixed(j -> spin_op('z', j) * spin_op('z', j + 1), 2) + kj * spin_op('z', L - 1) * spin_op('z', L) - sum_j(j -> hj * (spin_op('+', j) + spin_op('-', j))) - vj * sum_j(j -> spin_op('z', j))
 # 横磁場縦磁場イジングモデル(開放端条件と次近接)--非可積分でサイト反転対称性のみ
-H3 = sum_j_fixed(j -> 0.5 * spin_op('z', j) * spin_op('z', j + 1)) + 0.5 * nn * sum_j_fixed(j -> 0.5 * spin_op('z', j) * spin_op('z', j + 2), 2) - sum_j(j -> 0.5 * hj * (spin_op('+', j) + spin_op('-', j))) - vj * sum_j(j -> spin_op('z', j))
+#H3 = sum_j_fixed(j -> 0.5 * spin_op('z', j) * spin_op('z', j + 1)) + 0.5 * nn * sum_j_fixed(j -> 0.5 * spin_op('z', j) * spin_op('z', j + 2), 2) - sum_j(j -> 0.5 * hj * (spin_op('+', j) + spin_op('-', j))) - vj * sum_j(j -> spin_op('z', j))
 # XXZモデル(開放端条件)--個数保存対称性のみ
-H4 = sum_j_fixed(j -> 0.5 * (spin_op('+', j) * spin_op('-', j + 1) + spin_op('-', j) * spin_op('+', j + 1)) + Δ * spin_op('z', j) * spin_op('z', j + 1)) + sum_j(j -> (vj * sin(j)) * spin_op('z', j))
-H5 = -1.0 / 2.0 * sum_j(j -> -0.5 * (spin_op('+', j) * spin_op('-', j + 1) + spin_op('-', j) * spin_op('+', j + 1)))
-H6 = sum_j_fixed(j -> 0.25 * (spin_op('+', j) * spin_op('-', j + 1) + spin_op('-', j) * spin_op('+', j + 1)) + 0.5 * Δ * spin_op('z', j) * spin_op('z', j + 1)) + sum_j_fixed(j -> 0.25 * (spin_op('+', j) * spin_op('-', j + 2) + spin_op('-', j) * spin_op('+', j + 2)) + 0.5 * Δ * spin_op('z', j) * spin_op('z', j + 2), 2)
+#H4 = sum_j_fixed(j -> 0.5 * (spin_op('+', j) * spin_op('-', j + 1) + spin_op('-', j) * spin_op('+', j + 1)) + Δ * spin_op('z', j) * spin_op('z', j + 1)) + sum_j(j -> (vj * sin(j)) * spin_op('z', j))
+#H5 = -1.0 / 2.0 * sum_j(j -> -0.5 * (spin_op('+', j) * spin_op('-', j + 1) + spin_op('-', j) * spin_op('+', j + 1)))
+#H6 = sum_j_fixed(j -> 0.25 * (spin_op('+', j) * spin_op('-', j + 1) + spin_op('-', j) * spin_op('+', j + 1)) + 0.5 * Δ * spin_op('z', j) * spin_op('z', j + 1)) + sum_j_fixed(j -> 0.25 * (spin_op('+', j) * spin_op('-', j + 2) + spin_op('-', j) * spin_op('+', j + 2)) + 0.5 * Δ * spin_op('z', j) * spin_op('z', j + 2), 2)
 S_z = sum_j(j -> spin_op('z', j))
 # println(block_diag_entropy_u1z2(H1, (true_f, S_z), (true_f, site_flip())))
-x, y = block_diag_entropy_z2(H2, spin_flip())
-# eigens1, mat1 = block_diag_entropy(H4, (true_f, S_z))
+x, y = block_diag_entropy_z2(H1, site_flip())
+# eigens1, mat1 = block_diag_entropy_z2(H1, (true_f, site_flip()))
 # x, y = entanglement_entropy_show(eigens1, mat1)
-scatter(x, y;
-  label="eigenvalue=1",
-  xlabel="energy",
-  ylabel="entanglement entropy",
-  title="transverse field Ising model",
-  markersize=1.5, markerstrokewidth=0.5)
-cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
-savefig("entropy_spinflip.png")
+println(x, y)
+# scatter(x, y;
+#   label="eigenvalue=1",
+#   xlabel="energy",
+#   ylabel="entanglement entropy",
+#   title="transverse field Ising model",
+#   markersize=1.5, markerstrokewidth=0.5)
+# cd(raw"\\wsl.localhost\Ubuntu\home\kokor\git\exact_diag")
+# savefig("entropy_spinflip2.png")
