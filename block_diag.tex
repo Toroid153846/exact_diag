@@ -197,17 +197,17 @@ function sum(mats::Op...)
   ans
 end
 function sum(f::Function, k::Int=0)
-  sum_j(Tuple(f(i) for i in 1:(_site[]-k))...)
+  sum(Tuple(f(i) for i in 1:(_site[]-k))...)
 end
 \end{jllisting}
 演算子の和を計算する関数であり、引数の演算子の総和を求められる。\\
 下の関数の適用例として
 \begin{jllisting}
-sum_j(i->f(i))
+sum(i->f(i))
 \end{jllisting}
 上のように表記することで、サイト数で総和の範囲を指定することもできる。\\
 \begin{jllisting}
-sum_j(i->f(i), k)
+sum(i->f(i), k)
 \end{jllisting}
 上のように表記することで、サイト数からkを引いた値までの総和を求めることもできる。(開放端条件などのために用いられる)\\
 \subsection*{具体的な演算子の定義}
@@ -312,7 +312,11 @@ end
 スピンの種類$+$はスピンを1つ上げる演算子、$-$はスピンを1つ下げる演算子、$z$はスピンのz成分を返す演算子、$x$はスピンを1つ上げる演算子と1つ下げる演算子の和の半分、$y$はスピンを1つ上げる演算子と1つ下げる演算子の差の虚数倍の半分である。(普通に関数を定義するとエラーが出るので、無名関数を用いて定義しておく)\\
 \begin{jllisting}
 function num(site::Int)
-  return ((_dim[]-1.0)/2.0)*id()-spin('z',site)
+  number = function (t::Int)
+    n = Nary_trans(t)
+    return (n[site] + 0.0im, t)
+  end
+  return Op(number)
 end
 \end{jllisting}
 Jordan-Wigner変換を用いて、スピンのz成分を数演算子に変換するための関数である。\\
@@ -378,7 +382,14 @@ function show(op1::Op, digit::Int=1)
   pretty_table(mat1, header=([join(string.(Nary_trans(i)), "") for i in 1:size(mat1, 1)]), row_labels=([join(string.(Nary_trans(i)), "") for i in 1:size(mat1, 2)]), formatters=complex_formatter(digits=digit))
 end
 \end{jllisting}
-Fock状態による行列を表示できる関数である。\\
+Fock状態による行列を表示できる関数である。(デフォルトで小数点以下1桁表示)\\
+\begin{jllisting}
+function show_eigens(vec1::Vector{Float64},mat1::Matrix{ComplexF64}, digit::Int=1)
+  mat2=transpose(mat1)
+  pretty_table(mat2, header=([join(string.(Nary_trans(i)), "") for i in 1:size(mat1, 1)]), row_labels=([string(vec1[i]) for i in 1:size(mat1, 2)]), formatters=complex_formatter(digits=digit))
+end
+\end{jllisting}
+固有エネルギーと固有状態を表示する関数である。(デフォルトで小数点以下1桁表示)\\
 \subsection*{代表的なハミルトニアンの表示}
 これまでの演算子の関数を用いて代表的なハミルトニアンを表示してみる。\\
 まず、初期化をしておく。
@@ -387,9 +398,9 @@ init(2, 4)
 \end{jllisting}
 スピン$\frac{1}{2}$の4サイトの系を考える。\\
 横磁場イジング模型(周期境界条件)
-\begin{gather}
+\begin{align}
   H = \sum_{j=1}^{L} \left( S^z_j S^z_{j+1} - h S^x_{j} \right)
-\end{gather}
+\end{align}
 このハミルトニアンは$J$を用いて無次元化して
 \begin{jllisting}
 hj = 2.0
@@ -397,6 +408,9 @@ H1 = sum(j -> spin('z', j) * spin('z', j + 1) - hj * spin('x', j))
 \end{jllisting}
 と表せる。(hjは縦磁場の強さを表す$\frac{h}{J}$であるがどんな値でもよい)\\
 開放端条件ならば
+\begin{align}
+  H = \sum_{j=1}^{L-1} S^z_j S^z_{j+1} - h \sum_{j=1}^{L} S^x_{j}
+\end{align}
 \begin{jllisting}
 H1 = sum(j -> spin('z', j) * spin('z', j + 1), 1) - sum(j -> hj * spin('x', j))
 \end{jllisting}
@@ -411,6 +425,9 @@ H2 = sum(j -> spin('x', j) * spin('x', j + 1) + spin('y', j) * spin('y', j + 1) 
 \end{jllisting}
 と表せる。\\
 開放端条件ならば
+\begin{align}
+  H = \sum_{j=1}^{L-1} \left( S^x_j S^x_{j+1} + S^y_j S^y_{j+1} + \Delta S^z_j S^z_{j+1} \right)
+\end{align}
 \begin{jllisting}
 H2 = sum(j -> spin('x', j) * spin('x', j + 1) + spin('y', j) * spin('y', j + 1) + Δ * spin('z', j) * spin('z', j + 1), 1)
 \end{jllisting}
@@ -421,7 +438,7 @@ Bose-Hubbard模型(開放端条件)
 \end{align}
 \begin{jllisting}
 Uj = 2.0
-H3 = sum(j -> -spin('+', j) * spin('-', j + 1) + -spin('-', j) * spin('+', j + 1), 1) + sum(j -> (Uj / 2.0) * num(j) * (num(j) - 1))
+H3 = sum(j -> -spin('+', j) * spin('-', j + 1) - spin('-', j) * spin('+', j + 1), 1) + sum(j -> (Uj / 2.0) * num(j) * (num(j) - 1.0 * id()))
 \end{jllisting}
 と表せる。(Jordan-Wigner変換を用いている)\\
 Bose-Hubbard模型においては周期境界条件でJordan-Wigner変換を用いると非自明な項が出てくるため、開放端条件で定義している。\\
@@ -497,15 +514,335 @@ $x^3=1$の解$1,e^{\frac{2}{3}\pi i},e^{\frac{4}{3}\pi i}$であるため
 したがって、ハミルトニアンを左からかけると
 \begin{align}
   \hat{H}\ket{\bar{n};\beta} &= \frac{1}{K_{\bar{n},\beta}}\sum_{k=0}^{m-1} \left(\frac{\hat{A}}{\beta} \right)^k \hat{H}\ket{\varphi_{\bar{n}}}\\
-  &= \frac{1}{K_{\bar{n},\beta}}\sum_{k=0}^{m-1}\sum_{l=0}^{N} \left(\frac{\hat{A}}{\beta} \right)^k \ket{\varphi_{l}}\bra{\varphi_{l}}\hat{H}\ket{\varphi_{\bar{n}}}\\
-  &= \frac{1}{K_{\bar{n},\beta}}\sum_{l=0}^{N}H_{l,\bar{n}}\sum_{k=0}^{m-1} \left(\frac{\hat{A}}{\beta} \right)^k \ket{\varphi_{l}}\\
-  &=\sum_{l=0}^{N}\frac{K_{l,\beta}}{K_{\bar{n},\beta}}\left(\frac{\abs{\beta}}{\beta}\right)^{d(l)} H_{l,\bar{n}}\ket{\bar{l};\beta}\\
+  &= \frac{1}{K_{\bar{n},\beta}}\sum_{k=0}^{m-1}\sum_{l=1}^{N} \left(\frac{\hat{A}}{\beta} \right)^k \ket{\varphi_{l}}\bra{\varphi_{l}}\hat{H}\ket{\varphi_{\bar{n}}}\\
+  &= \frac{1}{K_{\bar{n},\beta}}\sum_{l=1}^{N}H_{l,\bar{n}}\sum_{k=0}^{m-1} \left(\frac{\hat{A}}{\beta} \right)^k \ket{\varphi_{l}}\\
+  &=\sum_{l=1}^{N}\frac{K_{l,\beta}}{K_{\bar{n},\beta}}\left(\frac{\abs{\beta}}{\beta}\right)^{-d(l)} H_{l,\bar{n}}\ket{\bar{l};\beta}\\
 \end{align}
 ここで、$d(l)$は
 \begin{align}
   \hat{A}^{d(n)}\ket{\varphi_n}=b\ket{\varphi_{\bar{n}}}
 \end{align}
 を満たすとする。
+\section{固有状態とそれを基底としたハミルトニアンとそのブロック対角化}
+これまでの解析計算を用いて固有状態によるハミルトニアンの計算を実際に行う。
+\subsection{1つの対称性を用いてブロック対角する}
+固有値の計算のためにn乗根を導入する。
+\begin{jllisting}
+function nthroots(z::ComplexF64, n::Int)
+  if n != 1 && abs(imag(z)) < 1.0e-10 && real(z) < 1.0e-10
+    throw(ArgumentError("n must be a positive integer greater than 0."))
+  end
+    r = abs(z)
+  θ = angle(z)
+  roots = Vector{ComplexF64}(undef, n)
+  for k in 1:n
+    if n / k == 2 && abs(imag(z)) < 1.0e-10 && real(z) > 1.0e-10
+      roots[k] = -sqrt(real(z)) + 0.0im
+      continue
+    end
+    if n == k
+      roots[k] = r^(1 / n) * cis(θ / n)
+      continue
+    end
+    roots[k] = r^(1 / n) * cis(θ / n + 2π * ((n / k)^(-1)))
+  end
+  return roots
+end
+\end{jllisting}
+n回の固有値から実際の固有値を求めるために複素数のn乗根を求める。\\
+\begin{jllisting}
+function eigens_dict(op1::Op)
+  dim_tot = _dim[]^_site[]
+  dict1 = Dict{ComplexF64,Vector{Vector{Int}}}()
+  set1 = Set{Int}()
+  maximum = 0
+  for i in 1:dim_tot
+    if i in set1
+      continue
+    end
+    i1 = copy(i)
+    vec1 = Vector{Int}()
+    push!(vec1, i1)
+    push!(set1, i1)
+    ntheigenvalue = 1.0 + 0.0im
+    for j in 1:dim_tot
+      tup1 = op1 * i1
+      ntheigenvalue *= tup1[1]
+      if tup1[2] == i
+        maximum = max(maximum, j)
+        break
+      end
+      i1 = copy(tup1[2])
+      push!(vec1, i1)
+      push!(set1, i1)
+    end
+    roots1= nthroots(ntheigenvalue, length(vec1))
+    for eigenvalue in roots1
+      dict1[eigenvalue] = get(dict1, eigenvalue, Vector{Vector{Int}}())
+      push!(dict1[eigenvalue], vec1)
+    end
+  end
+  return (dict1, maximum)
+end
+\end{jllisting}
+ある演算子をFock状態に作用させて、元のFock状態に戻るまでの最大の回数とその作用させていったときの状態をdictとして返す関数である。\\
+Dict\{ComplexF64,Vector\{Vector\{Int\}\}\}とは、Vector\{Int\}はその最初の要素に演算子を作用させていって元の状態に戻るまでのFock状態をそれぞれ格納しており、それらの最初の要素である代表元ごとにVector\{Vector\{Int\}\}に格納して、Dict\{ComplexF64,Vector\{Vector\{Int\}\}\}のComplexF64が元の状態に戻るまで演算子を作用させたときの固有値のn乗根を表して、その固有値ごとにVector\{Vector\{Int\}\}を格納している。\\
+\begin{jllisting}
+function eigen_number(eigenvalue::ComplexF64, maximum::Int)
+  root1=nthroots(1.0 + 0.0im, maximum)
+  number = 0
+  for i in eachindex(root1)
+    if abs(root1[i] - eigenvalue) < 1.0e-5
+      number = i
+      break
+    end
+  end
+  return number
+end
+\end{jllisting}
+並進演算子やスピン反転演算子、空間反転演算子を用いる場合には1の何番目のn乗根であるかを求めなければならないので、そのための関数である。\\
+実際の行列の計算としてはさらに特定の系について扱うため、以下のようにハミルトニアンの計算を考える。
+\begin{align}
+  \hat{H}\ket{\bar{n};\beta} &= \sum_{l=1}^{N}\frac{K_{l,\beta}}{K_{\bar{n},\beta}}\left(\frac{\abs{\beta}}{\beta}\right)^{-\mathrm{d}(l)} H_{l,\bar{n}}\ket{\bar{l};\beta}\\
+  &=\sum_{l=1}^{N}\frac{\frac{m}{\mathrm{len}(l)}\sqrt{\mathrm{len}(l)}}{\frac{m}{\mathrm{len}(n)}\sqrt{\mathrm{len}(n)}}\left(e^{-2\pi i\frac{k}{m}}\right)^{-\mathrm{d}(l)} H_{l,\bar{n}}\ket{\bar{l};\beta}\\
+  &=\sum_{l=1}^{N}\frac{\sqrt{\mathrm{len}(n)}}{\sqrt{\mathrm{len}(l)}}e^{2\pi i\frac{k\cdot \mathrm{d}(l)}{m}}H_{l,\bar{n}}\ket{\bar{l};\beta}
+\end{align}
+ここで、$\beta=e^{2\pi i\frac{k}{m}}$であるとし(S\_zなどの演算子を用いた場合でも表式は同じであるため現時点ではそう仮定してよい)、$\norm{\left(\frac{\hat{A}}{\beta} \right)^k \ket{\varphi_{l}}}=1$が成り立つとする。
+\begin{jllisting}
+function matrix(ham::Union{Matrix{ComplexF64},Op}, eigens_vec::Vector{Vector{Int}}, maximum::Int, eigenvalue::ComplexF64, number::Int)
+  if isa(ham, Matrix{ComplexF64})
+    mat2 = ham
+  else
+    mat2 = ExactDiag.matrix(ham)
+  end
+  mat1 = zeros(ComplexF64, length(eigens_vec), length(eigens_vec))
+  roots1 = nthroots(1.0 + 0.0im, maximum)
+  for i in eachindex(eigens_vec)
+    len_n= length(eigens_vec[i])
+    for j in eachindex(eigens_vec)
+      len_l= length(eigens_vec[j])
+      s1= 0.0 + 0.0im
+      for k in eachindex(eigens_vec[j])
+        s1+=(sqrt(len_n)/sqrt(len_l))roots1[mod(number*(k-1)-1, maximum) + 1]*mat2[eigens_vec[j][k],eigens_vec[i][1]]
+      end
+      mat1[j,i] += s1
+    end
+  end
+  return mat1
+end
+\end{jllisting}
+ある固有値である部分空間におけるハミルトニアンを求めることができる。式とほぼ同様の計算を行っている。
+\begin{jllisting}
+function reverse_eigenstate(vec1::Vector{ComplexF64},eigens_vec::Vector{Vector{Int}}, maximum::Int, eigenvalue::ComplexF64, number::Int)
+  dim_tot = _dim[]^_site[]
+  vec2=zeros(ComplexF64, dim_tot)
+  for i in eachindex(eigens_vec)
+    len_vec= length(eigens_vec[i])
+    roots1 = nthroots(1.0 + 0.0im, len_vec)
+    for j in eachindex(eigens_vec[i])
+      vec2[eigens_vec[i][j]] += (1.0/sqrt(length(eigens_vec[i]))) * roots1[mod(-number*(j-1)-1, len_vec) + 1] * vec1[i]
+    end
+  end
+  return vec2
+end
+function reverse_eigenstates(eigenstates::Matrix{ComplexF64},eigens_vec::Vector{Vector{Int}}, maximum::Int, eigenvalue::ComplexF64, number::Int)
+  dim_tot = _dim[]^_site[]
+  eigenstates1=Matrix{ComplexF64}(undef, dim_tot, length(eigens_vec))
+  for i in eachindex(eigens_vec)
+    eigenstates1[:,i] = reverse_eigenstate(eigenstates[:,i], eigens_vec, maximum, eigenvalue, number)
+  end
+  return eigenstates1
+end
+\end{jllisting}
+Fock基底における固有状態に戻すための関数である。\\
+ある演算子の固有状態による基底で表されているため、それを戻すために、基底の表式
+\begin{align}
+  \ket{\bar{l};\beta} =& \frac{1}{K_{\bar{l},\beta}}\sum_{k=0}^{m-1} \left(\frac{\hat{A}}{\beta} \right)^k \ket{\varphi_{\bar{l}}}\\
+=&\frac{1}{\sqrt{\mathrm{len}(l)}}\sum_{k=0}^{m-1} e^{-2\pi i\frac{j\cdot k}{m}}\hat{A}^k \ket{\varphi_{\bar{l}}}
+\end{align}
+(ここで、$\beta=e^{2\pi i\frac{j}{m}}$、$\norm{\left(\frac{\hat{A}}{\beta} \right)^k \ket{\varphi_{l}}}=1$であるとした。)を用いて計算できる。\\
+\begin{jllisting}
+function complex_float(x::Union{ComplexF64,Float64})
+  if isa(x, Float64)
+    return x
+  elseif abs(imag(x)) < 1.0e-10
+    return real(x)
+  else
+    throw(ArgumentError("x must be a real number or a complex number with negligible imaginary part."))
+  end
+end
+function complex_float(vec::Union{Vector{ComplexF64},Vector{Float64}})
+  vec1 = Vector{ComplexF64}(undef, length(vec))
+  for i in eachindex(vec)
+    vec1[i] = complex_float(vec[i])
+  end
+  return vec1
+end
+\end{jllisting}
+エネルギーは大体実数であるため、複素数の虚部がほとんどない場合に実数に変換する関数である。虚部がある場合にはエラーが出る。可換でない演算子の固有状態を用いてブロック対角化したとき等にエラーが出る。\\
+\begin{jllisting}
+function block_diag1(ham::Op, op1::Op)
+  dim_tot = _dim[]^_site[]
+  mat1=ExactDiag.matrix(ham)
+  dict1, maximum = eigens_dict(op1)
+  sorted_keys = sort(collect(keys(dict1)), by=real)
+  eigenenergys1 = Vector{Vector{Float64}}(undef, length(sorted_keys))
+  eigenstates1 = Vector{Matrix{ComplexF64}}(undef, length(sorted_keys))
+  for i in eachindex(sorted_keys)
+    eigenvalue1 = sorted_keys[i]
+    vec1 = dict1[eigenvalue1]
+    number=eigen_number(eigenvalue1, maximum)
+    mat2=matrix(mat1,vec1, maximum, eigenvalue1, number)
+    eigenvalues1, eigenvectors1=eigen(mat2)
+    eigenenergys1[i]= complex_float(eigenvalues1)
+    eigenstates1[i]=reverse_eigenstates(eigenvectors1, vec1, maximum, eigenvalue1, number)
+  end
+  return (vcat(eigenenergys1...), hcat(eigenstates1...))
+end
+\end{jllisting}
+この関数は、ハミルトニアンと演算子の固有状態を用いて一回ブロック対角化されたハミルトニアンの固有値と固有状態を求める。ほぼ、今までの関数を用いただけなので、説明は省略する。\\
+エネルギー準位はどのようにブロック対角化に依存しないため、エネルギー準位が同じであるか判定する関数を定義する。
+\begin{jllisting}
+function energy_same_check(energy1::Vector{Float64}, energy2::Vector{Float64})
+  if length(energy1) != length(energy2)
+    throw(ArgumentError("The lengths of the two energy vectors are not equal."))
+  end
+  sorted_energy1 = sort(energy1)
+  sorted_energy2 = sort(energy2)
+  for i in 1:length(energy1)
+    if abs(sorted_energy1[i] - sorted_energy2[i]) > 1.0e-10
+      return false
+    end
+  end
+  return true
+end
+\end{jllisting}
+エネルギー固有値をこれに入れればエネルギー準位が正しいかどうか判定できる。\\
+\subsection{複数の対称性を用いてブロック対角化する}
+後でやる。可積分系で既約分解するためには必要となってくる。
+\section{rvalueやエンタングルメントエントロピーの計算}
+\subsection{rvalueの計算}
+rvalueはエネルギー準位間隔がどのような分布をしているかを表す指標である。\\
+具体的には、昇順に並べたエネルギー準位を$\lbrace E_n \rbrace$としたとき、次のように定義される。
+\begin{align}
+  r = \frac{1}{N-2}\sum_{n=1}^{N-2} \frac{\mathrm{min}(E_{n+1}-E_n,E_{n+2}-E_{n+1})}{\mathrm{max}(E_{n+1}-E_n,E_{n+2}-E_{n+1})}
+\end{align}
+縮退が発生するのは問題なので、既約分解した行列のエネルギー準位を用いて計算する。\\
+\begin{jllisting}
+function block_diag1_eigenvalue_energy(ham::Op, op1::Op)
+  dim_tot = _dim[]^_site[]
+  mat1=matrix(ham)
+  dict1, maximum = eigens_dict(op1)
+  sorted_keys = sort(collect(keys(dict1)), by=real)
+  eigenenergys1 = [ Vector{Float64}(undef, length(sorted_keys)) for _ in 1:length(sorted_keys) ]
+  for i in eachindex(sorted_keys)
+    eigenvalue1 = sorted_keys[i]
+    vec1 = dict1[eigenvalue1]
+    number=eigen_number(eigenvalue1, maximum)
+    mat2=matrix(mat1,vec1, maximum, eigenvalue1, number)
+    eigenvalues1, _=eigen(mat2)
+    eigenenergys1[i]= complex_float(eigenvalues1)
+  end
+  return (sorted_keys,eigenenergys1)
+end
+\end{jllisting}
+この関数は固有値とそのセクターにおける固有エネルギーを返す。ほぼこれまでの関数を用いている。\\
+\begin{jllisting}
+function rvalue(vec::Vector{Float64})
+  if length(vec) < 3
+    return -1.0
+  end
+  sorted_vec = sort(vec)
+  r = 0.0
+  for i in 1:length(sorted_vec)-2
+    min_diff = min(sorted_vec[i+1] - sorted_vec[i], sorted_vec[i+2] - sorted_vec[i+1])
+    max_diff = max(sorted_vec[i+1] - sorted_vec[i], sorted_vec[i+2] - sorted_vec[i+1])
+    r += min_diff / max_diff
+  end
+  return r / (length(sorted_vec) - 2)
+end
+function rvalue_modify(vec::Vector{Float64})
+  if length(vec) < 8
+    return -1.0
+  end
+  sorted_vec = sort(vec)
+  sorted_delted_vec=sorted_vec[floor(Int,length(sorted_vec)/4.0):end-floor(Int,length(sorted_vec)/4.0)]
+  r = 0.0
+  for i in 1:length(sorted_delted_vec)-2
+    min_diff = min(sorted_delted_vec[i+1] - sorted_delted_vec[i], sorted_delted_vec[i+2] - sorted_delted_vec[i+1])
+    max_diff = max(sorted_delted_vec[i+1] - sorted_delted_vec[i], sorted_delted_vec[i+2] - sorted_delted_vec[i+1])
+    r += min_diff / max_diff
+  end
+  return r / (length(sorted_delted_vec) - 2)
+end
+\end{jllisting}
+rvalueを実際に計算する関数である。ほとんど数式そのままであるが、rvalue\_modifyにおいてはrvalueの収束を早くするためにエネルギー準位の中心1/2でrvalueを計算するようにしている。\\
+\begin{jllisting}
+function block_diag1_rvalue(ham::Op, op1::Op, modify::Bool=false)
+  sorted_keys,eigenenergys1=block_diag1_eigenvalue_energy(ham, op1)
+  if length(sorted_keys)!= length(eigenenergys1)
+    throw(ArgumentError("The lengths of the sorted keys and eigen energies do not match."))
+  end
+  dict1= Dict{ComplexF64,Float64}()
+  for i in eachindex(sorted_keys)
+    eigenvalue1 = sorted_keys[i]
+    if modify
+      r = rvalue_modify(eigenenergys1[i])
+    else
+      r = rvalue(eigenenergys1[i])
+    end
+    dict1[eigenvalue1] = r
+  end
+  return dict1
+end
+function block_diag1_rvalue(ham::Op, op1::Op, eigenvalue::ComplexF64, modify::Bool=false)
+  sorted_keys,eigenenergys1=block_diag1_eigenvalue_energy(ham, op1)
+  if length(sorted_keys)!= length(eigenenergys1)
+    throw(ArgumentError("The lengths of the sorted keys and eigen energies do not match."))
+  end
+  dict1= Dict{ComplexF64,Float64}()
+  for i in eachindex(sorted_keys)
+    eigenvalue1 = sorted_keys[i]
+    if abs(eigenvalue1-eigenvalue) < 1.0e-10
+      if modify
+        return rvalue_modify(eigenenergys1[i])
+      else
+        return rvalue(eigenenergys1[i])
+      end
+    end
+  end
+  throw(ArgumentError("The specified eigenvalue is not found in the sorted keys."))
+end
+\end{jllisting}
+ブロック対角化してrvalueを計算する関数である。特定の固有値に対してrvalueを返すDictを返すか、固有値を入力してそのrvalueを返す。bool変数のmodifyにより、rvalue\_modifyかrvalueかを選択することができる。\\
+\section{rvalueの計算結果}
+\subsection*{縦磁場横磁場イジングモデル(開放端)—-空間反転のみ}
+\begin{gather}
+  \hat{H}=J\sum_{i=1}^{N-1} \hat{S}_i^z\hat{S}_{i+1}^z - \frac{h}{2}\sum_{i=1}^{N} \left( \hat{S}_i^+ + \hat{S}_i^- \right) - v\sum_{i=1}^{N} \hat{S}_i^z\\
+  \frac{h}{J}=\sqrt{1.5}\\
+  \frac{v}{J}=\sqrt{2.0}
+\end{gather}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=150mm]{rvalue_transverse.png}
+  \caption{縦磁場横磁場イジングモデル}
+  \label{fig:rvalue_transverse}
+\end{figure}
+\subsection*{横磁場と縦磁場を加えたXXZモデル(開放端)--空間反転のみ}
+\begin{gather}
+  \hat{H}=J\sum_{i=1}^{N-1} \left(\frac{1}{2}(\hat{S}_i^+\hat{S}_{i+1}^- + \hat{S}_i^-\hat{S}_{i+1}^+) + \Delta\hat{S}_i^z\hat{S}_{i+1}^z\right)  - \frac{h}{2}\sum_{i=1}^{N} \left( \hat{S}_i^+ + \hat{S}_i^- \right) - v\sum_{i=1}^{N} \hat{S}_i^z\\
+  \Delta=\sqrt{1.3}\\
+  \frac{h}{J}=\sqrt{1.5}
+  \frac{v}{J}=\sqrt{2}
+\end{gather}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=150mm]{rvalue_xxz.png}
+  \caption{横磁場と縦磁場を加えたXXZモデル}
+  \label{fig:rvalue_xxz}
+\end{figure}
+どちらもあまり収束しておらず微妙な結果となっている。\\
+\section{エンタングルメントエントロピーの計算}
 \section{エンタングルメントエントロピーの計算結果}
 \subsection*{縦磁場横磁場イジングモデル(開放端)—空間反転のみ}
 \begin{gather}
